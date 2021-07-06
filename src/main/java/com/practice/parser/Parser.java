@@ -83,7 +83,6 @@ public class Parser {
             data.remove(0);
             this.prices = data;
         }
-
     }
     public void initDb() {
         try{
