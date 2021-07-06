@@ -92,8 +92,6 @@ public class Parser {
             session.execute("CREATE KEYSPACE IF NOT EXISTS " + this.keyspace + " WITH REPLICATION = {" +
                     "'class' : 'SimpleStrategy', 'replication_factor' : 1 }; ");
 
-            //session.execute( "use practice; ");
-
             session.execute("CREATE TABLE IF NOT EXISTS " + this.keyspace + ".transactions (" +
                     "transactionId bigint," +
                     "executionEntityName text," +
