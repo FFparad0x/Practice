@@ -1,4 +1,0 @@
-com/practice/parser/Main.java
- com.practice.parser.Main
-com/practice/parser/Parser.java
- com.practice.parser.Parser
