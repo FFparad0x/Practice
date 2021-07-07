@@ -11,6 +11,8 @@ import java.text.SimpleDateFormat;
 import java.time.*;
 import java.util.Date;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
@@ -137,6 +139,10 @@ public class Parser {
             catch (ParseException e){
                 System.out.println("Unable to parse the date" + e.getMessage());
             }
+            catch (ArrayIndexOutOfBoundsException e){
+                System.out.println("input information is not matching the format ");
+            }
+
 
         }
         for(String[] i : prices){
@@ -152,6 +158,9 @@ public class Parser {
             }
             catch (ParseException e){
                 System.out.println(e.getMessage());
+            }
+            catch (ArrayIndexOutOfBoundsException e){
+                System.out.println("input information is not matching the format ");
             }
         }
     }
@@ -182,10 +191,28 @@ public class Parser {
         return Float.parseFloat(a);
 
     }
-    public static File getFileByPath(String path){
-        File dir = new File(path); //path указывает на директорию
-        File file = dir.listFiles()[0];
-        return  file;
+
+    public File getTransactionFile (String path) throws NullPointerException{
+        File dir = new File(path);
+        File[] files = dir.listFiles();
+        for(File file : files) {
+            Pattern p = Pattern.compile("transactions_current.*\\.csv");
+            Matcher m = p.matcher(file.getName());
+            if(m.matches())
+                return file;
+        }
+        return null;
+    }
+    public File getPriceFile(String path) throws NullPointerException{
+        File dir = new File(path);
+        File[] files = dir.listFiles();
+        for(File file : files) {
+            Pattern p = Pattern.compile("price_file_date_unitimestamp.*\\.csv");
+            Matcher m = p.matcher(file.getName());
+            if(m.matches())
+                return file;
+        }
+        return null;
     }
 
 }
