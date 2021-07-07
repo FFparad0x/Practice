@@ -124,56 +124,62 @@ public class Parser {
                     "executionEntityName, instrumentName,instrumentClassification,quantity," +
                     "price,currency,datestamp,netAmount) VALUES (?,?,?,?,?,?,?,?,?);");
 
-            Instant instant = convertTimestamp(i[7]);
 
-            BoundStatement boundStatement = preparedStatement.bind(Long.parseLong(i[0]),i[1],i[2],i[3],
-                    Integer.parseInt(i[4]),floatconv(i[5]),i[6],instant,floatconv(i[8]));
-            ResultSet resultSet = session.execute(boundStatement);
+            try {
+                Instant instant = convertTimestamp(i[7]);
+                BoundStatement boundStatement = preparedStatement.bind(Long.parseLong(i[0]), i[1], i[2], i[3],
+                        Integer.parseInt(i[4]), floatconv(i[5]), i[6], instant, floatconv(i[8]));
+                ResultSet resultSet = session.execute(boundStatement);
+            }
+            catch (NumberFormatException e){
+                System.out.println(e.getMessage());
+            }
+            catch (ParseException e){
+                System.out.println("Unable to parse the date" + e.getMessage());
+            }
 
         }
         for(String[] i : prices){
             PreparedStatement preparedStatement = session.prepare("INSERT INTO " + this.keyspace + ".prices (instrumentName, " +
                     "datestamp, currency,avg,netAmountPerDay) VALUES (?,?,?,?,?);");
             double scale = Math.pow(10,2);
-
-            BoundStatement boundStatement = preparedStatement.bind(i[0], convertLocalDate(i[1]), i[2], floatconv(i[3]),floatconv(i[4]));
-            ResultSet resultSet = session.execute(boundStatement);
+            try {
+                BoundStatement boundStatement = preparedStatement.bind(i[0], convertLocalDate(i[1]), i[2], floatconv(i[3]), floatconv(i[4]));
+                ResultSet resultSet = session.execute(boundStatement);
+            }
+            catch (NumberFormatException e){
+                System.out.println("Wrong number format " + e.getMessage());
+            }
+            catch (ParseException e){
+                System.out.println(e.getMessage());
+            }
         }
     }
 
-    public Instant convertTimestamp (String in){ // required by driver
+    public Instant convertTimestamp (String in) throws ParseException{ // required by driver
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
-        try {
             Date date = simpleDateFormat.parse(in);
-            SimpleDateFormat newFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ");
+            SimpleDateFormat newFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z");
             return newFormatter.parse(newFormatter.format(date)).toInstant();
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-       return null;
     }
 
-    public LocalDate convertLocalDate(String in){ // required by driver
+    public LocalDate convertLocalDate(String in) throws ParseException{ // required by driver
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("dd-MM-yyyy");
-        try {
             Date date = simpleDateFormat.parse(in);
             SimpleDateFormat newFormatter = new SimpleDateFormat("yyyy-MM-dd");
             return newFormatter.parse(newFormatter.format(date)).toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        return null;
+
     }
 
     public void Close(){
         session.close();
-        session = null;
     }
-    public float floatconv(String a){
+    public float floatconv(String a) throws NumberFormatException{
 
-        BigDecimal bigDecimal = new BigDecimal(a);
+        /*BigDecimal bigDecimal = new BigDecimal(a);
         bigDecimal = bigDecimal.setScale(2,RoundingMode.HALF_UP );
-        return bigDecimal.floatValue();
+        return bigDecimal.floatValue();*/
+        return Float.parseFloat(a);
 
     }
     public static File getFileByPath(String path){
