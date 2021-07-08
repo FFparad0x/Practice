@@ -18,7 +18,11 @@ dependencies {
     implementation 'com.datastax.oss:java-driver-query-builder:4.2.0'
     implementation 'com.datastax.oss:java-driver-mapper-runtime:4.2.0'
 
+
     implementation "org.slf4j:slf4j-simple:1.6.2"
+    implementation "org.webjars.npm:vue:2.6.10"
+    compile 'io.javalin:javalin:3.13.9'
+    testCompile group: 'junit', name: 'junit', version: '4.12'
 }
 
 test {

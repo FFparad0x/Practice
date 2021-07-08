@@ -17,6 +17,7 @@ public class Main {
             parser.read(fileTransactions,filePrices);
             parser.initDb(); //to make sure that all tables exists and create them if not
             parser.loadDataToDB();
+            parser.quickAnalyze("./output/");
             parser.Close();
         } catch (IOException e) {
             e.printStackTrace();
@@ -27,7 +28,6 @@ public class Main {
         } catch (NullPointerException e){
             e.printStackTrace();
             System.out.println("hello, give me file");
-
         }
 
 

@@ -9,20 +9,22 @@ import java.net.InetSocketAddress;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.*;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.CqlSessionBuilder;
-import com.datastax.oss.driver.api.core.cql.BoundStatement;
-import com.datastax.oss.driver.api.core.cql.PreparedStatement;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
+import com.datastax.oss.driver.api.core.cql.*;
+import com.datastax.oss.driver.api.querybuilder.schema.Drop;
+import com.datastax.oss.driver.api.querybuilder.select.Select;
 import com.opencsv.CSVReader;
 import com.opencsv.CSVWriterBuilder;
 import com.opencsv.ICSVWriter;
 import com.opencsv.exceptions.CsvException;
+import org.eclipse.jetty.websocket.server.WebSocketHandler;
 
 
 public class Parser {
@@ -88,13 +90,20 @@ public class Parser {
     }
     public void initDb() {
         try{
+
+
             session = new CqlSessionBuilder().addContactPoint(new InetSocketAddress(this.address,this.port))
                     .withLocalDatacenter("datacenter1")
                     .build();
-            session.execute("CREATE KEYSPACE IF NOT EXISTS " + this.keyspace + " WITH REPLICATION = {" +
-                    "'class' : 'SimpleStrategy', 'replication_factor' : 1 }; ");
 
-            session.execute("CREATE TABLE IF NOT EXISTS " + this.keyspace + ".transactions (" +
+            session.execute("CREATE KEYSPACE IF NOT EXISTS " + this.keyspace + " WITH REPLICATION = {" +
+                "'class' : 'SimpleStrategy', 'replication_factor' : 1 }; ");
+
+            SimpleStatement s = SimpleStatement.builder("drop table if exists practice.transactions;").setExecutionProfileName("olap").build();
+            session.execute(s);
+            s = SimpleStatement.builder("drop table if exists practice.prices;").setExecutionProfileName("olap").build();
+            session.execute(s);
+            s = SimpleStatement.builder("CREATE TABLE IF NOT EXISTS " + this.keyspace + ".transactions (" +
                     "transactionId bigint," +
                     "executionEntityName text," +
                     "instrumentName text," +
@@ -104,14 +113,17 @@ public class Parser {
                     "currency text," +
                     "datestamp timestamp," +
                     "netAmount float," +
-                    "PRIMARY KEY ((executionEntityName,instrumentName), transactionId));");
-            session.execute("CREATE TABLE IF NOT EXISTS " + this.keyspace + ".prices (" +
-                    "instrumentName text," +
-                    "datestamp date," +
-                    "currency text," +
-                    "avg float," +
-                    "netAmountPerDay float," +
-                    "PRIMARY KEY ((datestamp, currency),instrumentName));");
+                    "PRIMARY KEY ((executionEntityName,instrumentName), transactionId));").setExecutionProfileName("olap").build();
+            session.execute(s);
+
+            s = SimpleStatement.builder("CREATE TABLE IF NOT EXISTS " + this.keyspace + ".prices (" +
+                "instrumentName text," +
+                "datestamp date," +
+                "currency text," +
+                "avg float," +
+                "netAmountPerDay float," +
+                "PRIMARY KEY ((datestamp, currency),instrumentName));").setExecutionProfileName("olap").build();
+            session.execute(s);
 
         }catch (Exception e){
             e.printStackTrace();
@@ -165,14 +177,16 @@ public class Parser {
         }
     }
 
-    public Instant convertTimestamp (String in) throws ParseException{ // required by driver
+    private Instant convertTimestamp (String in) throws ParseException{ // required by driver
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
+        simpleDateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
             Date date = simpleDateFormat.parse(in);
+
             SimpleDateFormat newFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z");
             return newFormatter.parse(newFormatter.format(date)).toInstant();
     }
 
-    public LocalDate convertLocalDate(String in) throws ParseException{ // required by driver
+    private LocalDate convertLocalDate(String in) throws ParseException{ // required by driver
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("dd-MM-yyyy");
             Date date = simpleDateFormat.parse(in);
             SimpleDateFormat newFormatter = new SimpleDateFormat("yyyy-MM-dd");
@@ -183,7 +197,7 @@ public class Parser {
     public void Close(){
         session.close();
     }
-    public float floatconv(String a) throws NumberFormatException{
+    private float floatconv(String a) throws NumberFormatException{
 
         /*BigDecimal bigDecimal = new BigDecimal(a);
         bigDecimal = bigDecimal.setScale(2,RoundingMode.HALF_UP );
@@ -207,12 +221,60 @@ public class Parser {
         File dir = new File(path);
         File[] files = dir.listFiles();
         for(File file : files) {
-            Pattern p = Pattern.compile("price_file_date_unitimestamp.*\\.csv");
+            Pattern p = Pattern.compile("price_file_date_unixtimestamp.*\\.csv");
             Matcher m = p.matcher(file.getName());
             if(m.matches())
                 return file;
         }
         return null;
+    }
+
+    public void quickAnalyze(String path) throws IOException {
+        SimpleStatement s = SimpleStatement.builder("select executionEntityName, instrumentName, currency from practice.transactions").build();
+        ResultSet set = session.execute(s);
+        Dictionary<String, Integer> dict = new Hashtable<>();
+        for(Row row:set){
+            String currency = row.getString("currency");
+            if(!isCurrencyValid(currency)){
+                if(dict.get(row.getString("executionEntityName") + " " + row.getString("instrumentName")) == null)
+                    dict.put(row.getString("executionEntityName") + " " + row.getString("instrumentName"),1);
+                else
+                    dict.put(row.getString("executionEntityName") + " " + row.getString("instrumentName"),
+                            dict.get(row.getString("executionEntityName") + " " + row.getString("instrumentName"))+1);
+            }
+        }
+        Enumeration<String> keys = dict.keys();
+        List<String[]> ica = new ArrayList<>();
+        ica.add(new String[]{"Alert ID","Execution Entity Name","Description","Affected transactions count"});
+        while (keys.hasMoreElements()){
+            String key = keys.nextElement();
+            createNewICARecord(ica,key,dict.get(key));
+        }
+        Date date = new Date();
+        File file = new File(path);
+        file.mkdirs();
+        file = new File(path + "alerts_"+date.toInstant().toString() + ".csv");
+        file.createNewFile();
+        write(ica,file);
+    }
+
+    private void createNewICARecord(List<String[]> ica, String key, Integer value) {
+        Date date = new Date();
+        SimpleDateFormat formatter = new SimpleDateFormat("ddMMyyyy");
+        String dat = formatter.format(date);
+        String[] s = new String[4];
+        String[] names = key.split(" ");
+        s[0] = "ICA"+dat + (ica.size()-1);
+        s[1] = "ICA";
+        s[2] = "Currency field is incorrect for the combination of "+ names[0] + " and " + names[1];
+        s[3] = value.toString();
+        ica.add(s);
+    }
+
+    private boolean isCurrencyValid(String currency){
+        Pattern p = Pattern.compile("[a-zA-Z]{3}");
+        Matcher m = p.matcher(currency);
+        return m.matches();
     }
 
 }
